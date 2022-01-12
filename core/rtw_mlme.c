@@ -3193,10 +3193,11 @@ void rtw_drv_scan_by_self(_adapter *padapter, u8 reason)
 		#ifdef CONFIG_LAYER2_ROAMING
 		if (rtw_chk_roam_flags(padapter, RTW_ROAM_ACTIVE) && pmlmepriv->need_to_roam == _TRUE)
 			RTW_INFO(FUNC_ADPT_FMT" need to roam, don't care BusyTraffic\n", FUNC_ADPT_ARG(padapter));
-		else
+	else {
 		#endif
 			RTW_INFO(FUNC_ADPT_FMT" exit BusyTraffic\n", FUNC_ADPT_ARG(padapter));
 			goto exit;
+		}
 	}
 	else if (ssc_chk != SS_ALLOW)
 		goto exit;
@@ -4315,6 +4316,14 @@ int rtw_rsn_sync_pmkid(_adapter *adapter, u8 *ie, uint ie_len, int i_ent)
 	if (i_ent >= 0) {
 		RTW_INFO(FUNC_ADPT_FMT" append PMKID:"KEY_FMT"\n"
 			, FUNC_ADPT_ARG(adapter), KEY_ARG(sec->PMKIDList[i_ent].PMKID));
+        if (!info.pmkid_list) {
+            /* prevent nullptr dereference when trying to insert a PMKID into 
+             * a frame that did not previously contain one. In order to be minimally
+             * invasive, we just discard requests like these, which might impact
+             * the ability to connect to certain access points, but will at least
+             * prevent the kernel panics */
+            return 0;
+        }
 
 		info.pmkid_cnt = 1; /* update new pmkid_cnt */
 		_rtw_memcpy(info.pmkid_list, sec->PMKIDList[i_ent].PMKID, 16);

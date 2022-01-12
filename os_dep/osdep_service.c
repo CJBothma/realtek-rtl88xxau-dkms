@@ -13,7 +13,6 @@
  *
  *****************************************************************************/
 
-
 #define _OSDEP_SERVICE_C_
 
 #include <drv_types.h>
@@ -26,11 +25,6 @@ atomic_t _malloc_cnt = ATOMIC_INIT(0);
 atomic_t _malloc_size = ATOMIC_INIT(0);
 #endif
 #endif /* DBG_MEMORY_LEAK */
-
-/* This is to fix get_ds() type mismatch on kernels above 5.1.x */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
-	#define get_ds() KERNEL_DS
-#endif
 
 #if defined(PLATFORM_LINUX)
 /*
@@ -2170,11 +2164,21 @@ static int writeFile(struct file *fp, char *buf, int len)
 {
 	int wlen = 0, sum = 0;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+	if (!(fp->f_mode & FMODE_CAN_WRITE))
+#else
 	if (!fp->f_op || !fp->f_op->write)
+#endif
 		return -EPERM;
 
 	while (sum < len) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+		wlen = kernel_write(fp, buf + sum, len - sum, &fp->f_pos);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+		wlen = __vfs_write(fp, buf + sum, len - sum, &fp->f_pos);
+#else
 		wlen = fp->f_op->write(fp, buf + sum, len - sum, &fp->f_pos);
+#endif
 		if (wlen > 0)
 			sum += wlen;
 		else if (0 != wlen)
@@ -2197,15 +2201,19 @@ static int isFileReadable(const char *path, u32 *sz)
 {
 	struct file *fp;
 	int ret = 0;
+#ifdef set_fs
 	mm_segment_t oldfs;
+#endif
 	char buf;
 
 	fp = filp_open(path, O_RDONLY, 0);
 	if (IS_ERR(fp))
 		ret = PTR_ERR(fp);
 	else {
+#ifdef set_fs
 		oldfs = get_fs();
-		set_fs(get_ds());
+		set_fs(KERNEL_DS);
+#endif
 
 		if (1 != readFile(fp, &buf, 1))
 			ret = PTR_ERR(fp);
@@ -2217,8 +2225,9 @@ static int isFileReadable(const char *path, u32 *sz)
 			*sz = i_size_read(fp->f_dentry->d_inode);
 			#endif
 		}
-
+#ifdef set_fs
 		set_fs(oldfs);
+#endif
 		filp_close(fp, NULL);
 	}
 	return ret;
@@ -2234,18 +2243,23 @@ static int isFileReadable(const char *path, u32 *sz)
 static int retriveFromFile(const char *path, u8 *buf, u32 sz)
 {
 	int ret = -1;
+#ifdef set_fs
 	mm_segment_t oldfs;
+#endif
 	struct file *fp;
 
 	if (path && buf) {
 		ret = openFile(&fp, path, O_RDONLY, 0);
 		if (0 == ret) {
 			RTW_INFO("%s openFile path:%s fp=%p\n", __FUNCTION__, path , fp);
-
+#ifdef set_fs
 			oldfs = get_fs();
-			set_fs(get_ds());
+			set_fs(KERNEL_DS);
 			ret = readFile(fp, buf, sz);
 			set_fs(oldfs);
+#else
+			ret = readFile(fp, buf, sz);
+#endif
 			closeFile(fp);
 
 			RTW_INFO("%s readFile, ret:%d\n", __FUNCTION__, ret);
@@ -2269,18 +2283,23 @@ static int retriveFromFile(const char *path, u8 *buf, u32 sz)
 static int storeToFile(const char *path, u8 *buf, u32 sz)
 {
 	int ret = 0;
+#ifdef set_fs
 	mm_segment_t oldfs;
+#endif
 	struct file *fp;
 
 	if (path && buf) {
 		ret = openFile(&fp, path, O_CREAT | O_WRONLY, 0666);
 		if (0 == ret) {
 			RTW_INFO("%s openFile path:%s fp=%p\n", __FUNCTION__, path , fp);
-
+#ifdef set_fs
 			oldfs = get_fs();
-			set_fs(get_ds());
+			set_fs(KERNEL_DS);
 			ret = writeFile(fp, buf, sz);
 			set_fs(oldfs);
+#else
+			ret = writeFile(fp, buf, sz);
+#endif
 			closeFile(fp);
 
 			RTW_INFO("%s writeFile, ret:%d\n", __FUNCTION__, ret);
@@ -2382,6 +2401,13 @@ struct net_device *rtw_alloc_etherdev_with_old_priv(int sizeof_priv, void *old_p
 	if (!pnetdev)
 		goto RETURN;
 
+
+	pnetdev->mtu = WLAN_MAX_ETHFRM_LEN;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+	pnetdev->min_mtu = WLAN_MIN_ETHFRM_LEN;
+	pnetdev->max_mtu = WLAN_DATA_MAXLEN;
+#endif
+
 	pnpi = netdev_priv(pnetdev);
 	pnpi->priv = old_priv;
 	pnpi->sizeof_priv = sizeof_priv;
@@ -2402,6 +2428,12 @@ struct net_device *rtw_alloc_etherdev(int sizeof_priv)
 #endif
 	if (!pnetdev)
 		goto RETURN;
+
+	pnetdev->mtu = WLAN_MAX_ETHFRM_LEN;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+	pnetdev->min_mtu = WLAN_MIN_ETHFRM_LEN;
+	pnetdev->max_mtu = WLAN_DATA_MAXLEN;
+#endif
 
 	pnpi = netdev_priv(pnetdev);
 

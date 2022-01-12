@@ -13,6 +13,10 @@ override_dh_fixperms:
 	dh_fixperms
 	find debian/realtek-rtl88xxau-dkms/usr/src -type f -exec chmod -x {} \;
 
+override_dh_install:
+	sed -i dkms.conf -e 's%^PACKAGE_VERSION=.*%PACKAGE_VERSION="$(DEB_VERSION_UPSTREAM)"%'
+	dh_install
+
 # Nothing to configure, build or auto-install (all is done after
 # installation using dkms)
 override_dh_auto_configure:

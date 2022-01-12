@@ -1,3 +1,9 @@
+realtek-rtl88xxau-dkms (5.6.4.2~git20211212.3a6402e-0parrot1) parrot-updates; urgency=medium
+
+  * Import new Upstream release.
+
+ -- Lorenzo "Palinuro" Faletra <palinuro@parrotsec.org>  Wed, 12 Jan 2022 22:32:04 +0100
+
 realtek-rtl88xxau-dkms (5.6.1-1parrot1) rolling; urgency=medium
 
   * Import new upstream version.
